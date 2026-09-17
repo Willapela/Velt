@@ -118,6 +118,11 @@ write_config() {
 TCP_LISTEN=0.0.0.0:${TCP_LISTEN_PORT}
 METRICS_LISTEN=127.0.0.1:${METRICS_PORT}
 MAX_CLIENTS=10000
+# Ajustes do caminho de resposta UDP -> TCP -> cliente.
+# Valores maiores reduzem descartes sob rajadas, mas consomem mais memória.
+WRITE_CHAN=4096
+UDP_RBUF=1048576
+UDP_WBUF=1048576
 MAP_TTL=90s
 IDLE_TIMEOUT=2m
 EOF
@@ -133,7 +138,7 @@ After=network.target
 [Service]
 Type=simple
 EnvironmentFile=${CONF_FILE}
-ExecStart=${BIN_PATH} -listen \${TCP_LISTEN} -metrics-listen \${METRICS_LISTEN} -max-clients \${MAX_CLIENTS} -map-ttl \${MAP_TTL} -idle-timeout \${IDLE_TIMEOUT}
+ExecStart=${BIN_PATH} -listen \${TCP_LISTEN} -metrics-listen \${METRICS_LISTEN} -max-clients \${MAX_CLIENTS} -write-chan \${WRITE_CHAN} -udp-rbuf \${UDP_RBUF} -udp-wbuf \${UDP_WBUF} -map-ttl \${MAP_TTL} -idle-timeout \${IDLE_TIMEOUT}
 Restart=always
 RestartSec=3
 LimitNOFILE=1000000
