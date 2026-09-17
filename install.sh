@@ -129,6 +129,32 @@ EOF
     c_green "Config gravada em ${CONF_FILE}"
 }
 
+update_config() {
+    # Mantém a configuração existente e apenas acrescenta os novos ajustes.
+    if [[ ! -f "$CONF_FILE" ]]; then
+        c_red "Configuração não encontrada em ${CONF_FILE}. Execute a instalação normal primeiro."
+        exit 1
+    fi
+
+    local changed=0
+    for setting in \
+        "WRITE_CHAN=4096" \
+        "UDP_RBUF=1048576" \
+        "UDP_WBUF=1048576"; do
+        local key="${setting%%=*}"
+        if ! grep -q "^${key}=" "$CONF_FILE"; then
+            printf '%s\n' "$setting" >> "$CONF_FILE"
+            changed=1
+        fi
+    done
+
+    if [[ "$changed" -eq 1 ]]; then
+        c_green "Novos ajustes de resposta UDP adicionados à configuração."
+    else
+        c_yellow "A configuração já contém os ajustes de resposta UDP."
+    fi
+}
+
 write_systemd_service() {
     cat > "$SERVICE_FILE" <<EOF
 [Unit]
@@ -228,6 +254,19 @@ show_config() {
     echo "-------------------------"
 }
 
+update_service() {
+    local updater="/tmp/velt-update.sh"
+    c_yellow "Baixando a versão mais recente do instalador..."
+    curl -fsSL "https://raw.githubusercontent.com/Willapela/Velt/main/install.sh" -o "$updater"
+    chmod +x "$updater"
+    if [[ "$EUID" -eq 0 ]]; then
+        bash "$updater" --update
+    else
+        sudo bash "$updater" --update
+    fi
+    rm -f "$updater"
+}
+
 uninstall_all() {
     read -rp "Tem certeza que quer desinstalar o VeltrixUPGW? (s/N): " CONFIRM
     if [[ "$CONFIRM" =~ ^[sS]$ ]]; then
@@ -258,6 +297,7 @@ main_menu() {
         echo " 7) Trocar porta TCP de escuta"
         echo " 8) Abrir mais portas UDP no firewall"
         echo " 9) Desinstalar"
+        echo "10) Atualizar instalação"
         echo " 0) Sair"
         echo "============================================"
         read -rp "Escolha uma opção: " OPT
@@ -271,6 +311,7 @@ main_menu() {
             7) change_tcp_port; pause ;;
             8) open_udp_range; pause ;;
             9) uninstall_all; pause ;;
+            10) update_service; pause ;;
             0) exit 0 ;;
             *) c_red "Opção inválida."; pause ;;
         esac
@@ -286,9 +327,38 @@ MENU_EOF
 # ============================================================
 # Execução
 # ============================================================
+UPDATE_MODE=false
+if [[ "${1:-}" == "--update" ]]; then
+    UPDATE_MODE=true
+elif [[ $# -gt 0 ]]; then
+    c_red "Uso: sudo bash install.sh [--update]"
+    exit 1
+fi
+
 need_root
 install_deps
 install_go
+
+if [[ "$UPDATE_MODE" == true ]]; then
+    if [[ ! -f "$CONF_FILE" ]]; then
+        c_red "Instalação existente não encontrada em ${CONF_FILE}."
+        exit 1
+    fi
+
+    # Importa TCP_LISTEN, METRICS_LISTEN e MAX_CLIENTS da instalação atual.
+    set -a
+    # shellcheck disable=SC1090
+    source "$CONF_FILE"
+    set +a
+    METRICS_PORT="${METRICS_LISTEN##*:}"
+
+    build_veltrix
+    update_config
+    write_systemd_service
+
+    c_green "Atualização concluída sem alterar a porta, os limites ou o firewall."
+    exit 0
+fi
 
 echo ""
 read -rp "Porta TCP de escuta do gateway [padrão ${DEFAULT_TCP_LISTEN_PORT}]: " TCP_LISTEN_PORT
