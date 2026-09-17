@@ -355,8 +355,10 @@ if [[ "$UPDATE_MODE" == true ]]; then
     build_veltrix
     update_config
     write_systemd_service
+    write_menu_script
 
     c_green "Atualização concluída sem alterar a porta, os limites ou o firewall."
+    c_green "O menu de gerenciamento também foi atualizado."
     exit 0
 fi
 
